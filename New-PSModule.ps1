@@ -207,43 +207,141 @@ function New-PSModule {
             $params = @{
                 Path              = $("$Path\$ModuleName\1.0\$ModuleName.psd1")
                 RootModule        = $ModuleName + ".psm1"
+                ModuleVersion     = '1.0'
                 Author            = $ModuleAuthor
+                Company           = ' '
                 Description       = $Description
                 FunctionsToExport = "New-Function" # FunctionsToExport will be all of the functions you want to be publicly exposed to the end user
             }
 
+            if ($parameters.ContainsKey('InstallPSFramework')) {
+                Save-Output "$(Get-TimeStamp) - Configuring module manifest for for PSFramework"
+                $params.RequiredModules = @(@{ModuleName = 'PSFramework'; RequiredVersion = '1.6.205' })
+            }
+
             if (New-ModuleManifest @params -PassThru -ErrorAction Stop) { Save-Output "$(Get-TimeStamp) - New PowerShell module manifest file $($ModuleName).psd1 created" }
-            $fileContent = @'
-foreach ($file in (Get-ChildItem "$PSScriptRoot\internal" -Filter *.ps1 -Recurse)) { . $file.FullName }
-foreach ($file in (Get-ChildItem "$PSScriptRoot\functions" -Filter *.ps1 -Recurse)) { . $file.FullName }
-foreach ($file in (Get-ChildItem "$PSScriptRoot\xml" -Filter *.ps1 -Recurse)) { . $file.FullName }
+            $manifestContent = @'
+$script:ModuleRoot = $PSScriptRoot
+
+# Import internal functions and module PSFramework configurations
+foreach ($file in (Get-ChildItem "$ModuleRoot\internal" -Filter *.ps1 -Recurse -ErrorAction Ignore)) { . $file.FullName }
+
+# Import Public Functions
+foreach ($file in (Get-ChildItem "$ModuleRoot\functions" -Filter *.ps1 -Recurse -ErrorAction Ignore)) { . $file.FullName }
+
+# Import XML View Files
+foreach ($file in (Get-ChildItem "$ModuleRoot\xml" -Filter *.ps1 -Recurse -ErrorAction Ignore)) { . $file.FullName }
 '@
-            Out-File -FilePath (Join-Path -Path "$Path\$ModuleName\1.0" -ChildPath "$($ModuleName).psm1") -InputObject $fileContent -Encoding utf8 -ErrorAction Stop
+            Out-File -FilePath (Join-Path -Path "$Path\$ModuleName\1.0" -ChildPath "$($ModuleName).psm1") -InputObject $manifestContent -Encoding utf8 -ErrorAction Stop
             Save-Output "$(Get-TimeStamp) - New PowerShell script file: $($ModuleName).psm1 created"
 
-            $function = @'
+            $functionWithoutPSFramework = @'
 function New-Function {
+    <#
+        .SYNOPSIS
+            Default test function
+
+        .DESCRIPTION
+            This is a test module function
+
+        .PARAMETER ParameterOne
+            Passed in parameter
+
+        .EXAMPLE
+            C:\PS> New-Function -Parameter "This is a test"
+
+            Calls the New-Function method and passes in a string as an argument
+
+        .NOTES
+            This method returns a string
+    #>
+
+    [OutputType('System.String')]
     [CmdletBinding(DefaultParameterSetName = 'Default')]
     param(
     [string]
-    $Name
+    $Parameter
     )
 
-    begin { Write-Verbose "Starting..." }
+    begin { Write-Verbose "Starting New-Function" }
 
     process {
-        If($Name){ Write-Host "My name is $Name" }
-        else{ Write-Host "My name is undefined" }
+        try{
+            If($Parameter){ Write-Host "Passed in argument: $Parameter" }
+            else{ Write-Host "No argument passed in" }
+        }
+        catch{
+            Write-Host "Error detected: $_"
+        }
     }
 
-    end { Write-Verbose "Finsihed..." }
+    end { Write-Verbose "Function Finsihed" }
 }
 '@
-            Out-File -FilePath (Join-Path -Path "$Path\$ModuleName\1.0\functions\" -ChildPath "New-Function.ps1") -InputObject $function -Encoding utf8 -ErrorAction Stop
+
+            $functionWithPSFramework = @'
+function New-Function {
+    <#
+        .SYNOPSIS
+            Default test function
+
+        .DESCRIPTION
+            This is a test module function
+
+        .PARAMETER Parameter
+            Passed in parameter
+
+        .EXAMPLE
+            C:\PS> New-Function -Parameter "This is a test"
+
+            Calls the New-Function method and passes in a string as an argument
+
+        .NOTES
+            This method returns a string
+    #>
+
+    [OutputType('System.String')]
+    [CmdletBinding(DefaultParameterSetName = 'Default')]
+    param(
+    [string]
+    $Parameter
+    )
+
+    begin { Write-Verbose "Starting New-Function" }
+
+    process {
+        try{
+            If($Parameter){ Write-Host "Passed in argument: $Parameter" }
+            else{ Write-Host "No argument passed in" }
+
+            # Pulling value from the PSFramework Configuration
+            $moduleName = (Get-ChildItem .\*.psd1).Name -replace ".psd1", ""
+            $repository = Get-PSFConfigValue -FullName "$moduleName.PSGallery.Repository"
+            $repositoryUrl = Get-PSFConfigValue -FullName "$moduleName.PSGallery.Url"
+
+            Write-Host "Values from local configuration show - PowerShell repository is: $($repository) and the url is: $($repositoryUrl)"
+        }
+        catch{
+            Write-Host "Error detected: $_"
+        }
+    }
+
+    end { Write-Verbose "Function Finsihed" }
+}
+'@
+
+            if ($parameters.ContainsKey('InstallPSFramework')) {
+                Out-File -FilePath (Join-Path -Path "$Path\$ModuleName\1.0\functions\" -ChildPath "New-Function.ps1") -InputObject $functionWithPSFramework -Encoding utf8 -ErrorAction Stop
+            }
+            else {
+                Out-File -FilePath (Join-Path -Path "$Path\$ModuleName\1.0\functions\" -ChildPath "New-Function.ps1") -InputObject $functionWithoutPSFramework -Encoding utf8 -ErrorAction Stop    <# Action when all if and elseif conditions are false #>
+            }
+
             Out-File -FilePath (Join-Path -Path "$Path\$ModuleName\1.0\internal\functions\" -ChildPath "New-Function.ps1") -InputObject $function -Encoding utf8 -ErrorAction Stop
             Save-Output "$(Get-TimeStamp) - Created new PowerShell script file New-Function.ps1"
-            Save-Output "$(Get-TimeStamp) - Configuring module for PSFramework"
+
             if ($parameters.ContainsKey('InstallPSFramework')) {
+                Save-Output "$(Get-TimeStamp) - Configuring module for PSFramework support"
                 $configuration = @"
 <#
 This is an example configuration file
@@ -255,13 +353,17 @@ feel totally free to split them into multiple files.
 
 <#
 # Example Configuration
-Set-PSFConfig -Module '$ModuleName' -Name 'Example.Setting' -Value 10 -Initialize -Validation 'integer' -Handler { } -Description "Example configuration setting. Your module can then use the setting using 'Get-PSFConfigValue'"
+#Set-PSFConfig -Module '$ModuleName' -Name 'TempDirectory' -Value "$($env:Temp)" -Initialize -Validation 'string' -Handler { } -Description "Example configuration setting. Your module can then use the setting using 'Get-PSFConfigValue'"
 #>
+# Defining PowerShell Gallery Repository
+Set-PSFConfig -Module '$ModuleName' -Name 'PSGallery.Repository' -Value "PSGallery" -Initialize -Validation 'string' -Handler { } -Description "PowerShell Gallery Repository"
+Set-PSFConfig -Module '$ModuleName' -Name 'PSGallery.Url' -Value "https://www.powershellgallery.com/api/v2" -Initialize -Validation 'string' -Handler { } -Description "PowerShell Gallery Repository Url"
 "@
                 Out-File -FilePath (Join-Path -Path "$Path\$ModuleName\1.0\internal\configurations" -ChildPath "configurations.ps1") -InputObject $configuration
-                Save-Output "$(Get-TimeStamp) - Created new PowerShell configurations file for PSFramework"
+                Save-Output "$(Get-TimeStamp) - Created new PowerShell configuration file for module created using PSFramework"
             }
 
+            Save-Output "$(Get-TimeStamp) - Creating default XML formatting view"
             $xmlFormat = @"
 <?xml version="1.0" encoding="utf-8" ?>
 
