@@ -96,7 +96,13 @@ function New-PSModule {
         Save path for module
 
     .PARAMETER InstallPSFramework
-        Switch to indicate that you want to install PSFramework module
+        Switch to indicate that you want to install the PSFramework module
+    
+    .PARAMETER InstallPSModuleDevelopment
+        Switch to indicate that you want to install the PSModuleDevelopment module
+
+    .PARAMETER InstallPSUtil
+        Switch to indicate that you want to install the PSUtils module
 
     .EXAMPLE
         New-PSModule -ModuleName YourModuleName -Description "This is my module" -ModuleAuthor "Author name"
@@ -136,7 +142,13 @@ function New-PSModule {
         $Path = [environment]::GetFolderPath("MyDocuments"),
 
         [switch]
-        $InstallPSFramework
+        $InstallPSFramework,
+
+        [switch]
+        $InstallPSModuleDevelopment,
+
+        [switch]
+        $InstallPSUtil
     )
 
     begin {
@@ -150,16 +162,26 @@ function New-PSModule {
     }
 
     process {
-        if ($parameters.ContainsKey('InstallPSFramework')) {
-            if (-NOT (Get-Module -Name PSFramework -ListAvailable)) {
-                Save-Output "$(Get-TimeStamp) - Checking for the PSFramework module"
-                if (Install-Module -Name PSFrameFramework -Repository PowerShellGallery -PassThru -Force -ErrorAction Stop) {
-                    Save-Output "$(Get-TimeStamp) - Installing PSFramework"
-                    if (Import-Moudle -Name PSFramework -PassThru -ErrorAction Stop) {
-                        Save-Output "$(Get-TimeStamp) - Importing PSFramework"
-                    }
+        if ($parameters.ContainsKey('InstallPSFramework') -or ($parameters.ContainsKey('InstallPSModuleDevelopment') -or ($parameters.ContainsKey('InstallPSUtil')))) {
+            
+            # Get list of modules to install
+            foreach ($param in $parameters.Keys) { 
+                if ($param -like "InstallPS*") {
+                    [string[]]$moduleToInstall += $param -replace 'Install', ''
                 }
-                Save-Output "$(Get-TimeStamp) - For more information about PSFramework please visit: https://PSFramework.org/"
+            }
+            
+            foreach ($module in $moduleToInstall) {
+                if (-NOT (Get-Module -Name $module -ListAvailable)) {
+                    Save-Output "$(Get-TimeStamp) - Checking for the $($module) module"
+                    if (Install-Module -Name $module -Repository PowerShellGallery -PassThru -Force -ErrorAction Stop) {
+                        Save-Output "$(Get-TimeStamp) - Installing $($module)"
+                        if (Import-Module -Name $module -PassThru -ErrorAction Stop) {
+                            Save-Output "$(Get-TimeStamp) - Importing $module"
+                        }
+                    }
+                    Save-Output "$(Get-TimeStamp) - For more information about PSFramework please visit: https://PSFramework.org/"
+                }
             }
         }
 
