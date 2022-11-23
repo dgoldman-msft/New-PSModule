@@ -297,7 +297,7 @@ function New-Function {
         }
     }
 
-    end { Write-Verbose "Function Finsihed" }
+    end { Write-Verbose "Function Finished" }
 }
 '@
 
